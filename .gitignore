@@ -1,0 +1,24 @@
+# Large source video, not needed for deployment
+Video-580.mp4
+
+# Firebase emulator debug logs
+*-debug.log
+.firebase/
+
+# Python
+functions/venv/
+streamlit_app/venv/
+__pycache__/
+*.pyc
+
+# Streamlit secrets - never commit real credentials (bare filename so it's
+# ignored no matter how deeply nested - streamlit_app/.streamlit/secrets.toml
+# would NOT have matched a slash-qualified pattern anchored at the repo root)
+secrets.toml
+
+# Service account keys - never commit real credentials
+*serviceAccountKey*.json
+*-firebase-adminsdk-*.json
+
+# OS
+.DS_Store

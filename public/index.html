@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Slap Four</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <h1>🐯 Slap Four</h1>
+      <div class="topbar-actions">
+        <button id="scores-toggle" class="secondary" hidden>🏆 Scores</button>
+        <button id="leave-toggle" class="secondary" hidden>Leave</button>
+        <div id="room-badge" class="room-badge" hidden></div>
+      </div>
+    </header>
+
+    <main id="root" class="root"></main>
+
+    <div id="hand-panel" class="hand-panel" hidden></div>
+
+    <div id="scores-panel" class="scores-panel" hidden>
+      <div class="scores-panel-inner card-panel">
+        <div class="scores-panel-header">
+          <h3>Scoreboard</h3>
+          <button id="scores-close" class="secondary">Close</button>
+        </div>
+        <ul id="scores-list" class="roster"></ul>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
