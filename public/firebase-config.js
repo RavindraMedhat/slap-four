@@ -9,6 +9,8 @@ export const firebaseConfig = {
   messagingSenderId: "690743803368",
 };
 
-// When served from localhost, point the SDK at the local Emulator Suite
-// instead of live Firebase (see firebase.json for the matching ports).
-export const USE_EMULATORS = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+// This app is only ever served by the local Firebase Hosting emulator (port
+// 5050, see firebase.json) - checking the port instead of the hostname means
+// this still resolves correctly when another device on the same WiFi loads
+// the page via this machine's LAN IP instead of localhost/127.0.0.1.
+export const USE_EMULATORS = location.port === "5050";

@@ -34,9 +34,13 @@ const db = getFirestore(app);
 const functions = getFunctions(app);
 
 if (USE_EMULATORS) {
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
-  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+  // Use whatever hostname the browser actually loaded this page with (could
+  // be localhost, 127.0.0.1, or this machine's LAN IP if another device on
+  // the same WiFi opened it) - the emulators run on this same host.
+  const emulatorHost = location.hostname;
+  connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
+  connectFirestoreEmulator(db, emulatorHost, 8080);
+  connectFunctionsEmulator(functions, emulatorHost, 5001);
 }
 
 const rootEl = document.getElementById("root");
