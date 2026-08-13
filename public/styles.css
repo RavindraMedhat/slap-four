@@ -314,3 +314,29 @@ button.danger { background: var(--danger); color: var(--paper); }
   font-weight: 700;
   z-index: 50;
 }
+
+.spam-block-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  text-align: center;
+  padding: 24px;
+}
+.spam-block-overlay[hidden] { display: none; }
+.spam-block-message {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--paper);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.spam-block-countdown {
+  font-size: 2.4rem;
+  color: var(--danger);
+}

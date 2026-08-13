@@ -133,7 +133,6 @@ def _pass_card_txn(transaction, room_ref, uid, card_id, decline_win):
                 # winning combo is revealed to everyone as proof - same as a
                 # real player showing their hand when they win.
                 "keptCards": kept4,
-                "sequenceCounter": 0,
                 "slaps": {},
                 "startedAt": firestore.SERVER_TIMESTAMP,
                 "order": None,

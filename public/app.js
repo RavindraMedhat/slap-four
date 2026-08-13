@@ -52,6 +52,64 @@ const scoresPanelEl = document.getElementById("scores-panel");
 const scoresListEl = document.getElementById("scores-list");
 const scoresCloseEl = document.getElementById("scores-close");
 const leaveToggleEl = document.getElementById("leave-toggle");
+const spamBlockOverlayEl = document.getElementById("spam-block-overlay");
+const spamBlockSecondsEl = document.getElementById("spam-block-seconds");
+
+// Anti-spam-tap guard: some players pre-emptively mash the screen so that
+// whenever the slap prompt appears, one of their already-in-flight taps
+// lands almost instantly instead of reacting for real. If a player taps
+// too many times too quickly - anywhere in the app, not just the slap
+// button - lock the whole screen for a few seconds. This is enforced
+// entirely client-side (nothing server-side depends on it); it can't stop
+// someone determined to tamper with their own client, but it does stop the
+// casual "just tap really fast" trick during normal play.
+const SPAM_TAP_THRESHOLD = 5; // taps...
+const SPAM_TAP_WINDOW_MS = 1000; // ...within this many ms...
+const SPAM_BLOCK_DURATION_MS = 5000; // ...triggers this many ms of lockout.
+
+let recentTapTimes = [];
+let spamBlockedUntil = 0;
+let spamBlockTimer = null;
+
+function isSpamBlocked() {
+  return Date.now() < spamBlockedUntil;
+}
+
+function startSpamBlock() {
+  spamBlockedUntil = Date.now() + SPAM_BLOCK_DURATION_MS;
+  spamBlockOverlayEl.hidden = false;
+  clearInterval(spamBlockTimer);
+  const tick = () => {
+    const remainingMs = spamBlockedUntil - Date.now();
+    if (remainingMs <= 0) {
+      clearInterval(spamBlockTimer);
+      spamBlockOverlayEl.hidden = true;
+      return;
+    }
+    spamBlockSecondsEl.textContent = Math.ceil(remainingMs / 1000);
+  };
+  tick();
+  spamBlockTimer = setInterval(tick, 100);
+}
+
+// Capture phase runs before any button's own click handler, so a blocked or
+// spam-triggering tap never reaches the game's actual button logic.
+document.addEventListener("click", (e) => {
+  if (isSpamBlocked()) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  const now = Date.now();
+  recentTapTimes.push(now);
+  recentTapTimes = recentTapTimes.filter((t) => now - t <= SPAM_TAP_WINDOW_MS);
+  if (recentTapTimes.length >= SPAM_TAP_THRESHOLD) {
+    recentTapTimes = [];
+    e.preventDefault();
+    e.stopPropagation();
+    startSpamBlock();
+  }
+}, true);
 
 const SESSION_KEY = "slapfour.roomCode";
 const NAME_KEY = "slapfour.displayName";

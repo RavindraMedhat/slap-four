@@ -10,11 +10,24 @@ const PRESSURE_LABELS = {
 
 let tickTimer = null;
 
+// The moment THIS browser first rendered the slap prompt for the current
+// round - reaction time is measured from here, not from the server's
+// startedAt (which would still bake in this client's network latency to
+// receive the "now slapping" update, exactly what this is meant to avoid).
+let promptShownAt = null;
+let promptShownForRound = null;
+
 export function renderSlap(root, ctx) {
   clearInterval(tickTimer);
 
   const { room, players, uid } = ctx;
   const slapState = room.round.slap;
+
+  const roundKey = `${ctx.roomCode}:${room.currentRoundNumber}`;
+  if (promptShownForRound !== roundKey) {
+    promptShownForRound = roundKey;
+    promptShownAt = Date.now();
+  }
   const winner = players.find((p) => p.uid === slapState.winnerUid);
   const isWinner = uid === slapState.winnerUid;
   const alreadySlapped = Object.prototype.hasOwnProperty.call(slapState.slaps || {}, uid);
@@ -51,8 +64,9 @@ export function renderSlap(root, ctx) {
   if (btn && !btn.disabled) {
     btn.addEventListener("click", async () => {
       btn.disabled = true;
+      const reactionMs = Date.now() - promptShownAt;
       try {
-        await ctx.call("slap", { room_code: ctx.roomCode });
+        await ctx.call("slap", { room_code: ctx.roomCode, reaction_ms: reactionMs });
       } catch (_) {
         btn.disabled = false;
       }

@@ -1,10 +1,12 @@
 """Slap-race resolution: slap, resolve_round, set_penalty.
 
-No client-reported timestamp is ever trusted for ordering. Every slap is
-assigned an incrementing `sequenceCounter` inside a Firestore transaction,
-which Firestore serializes for concurrent writers to the same document -
-that serialization order is the sole, server-authoritative source of truth
-for "who slapped first".
+Ranking is by each player's own client-measured reaction time (ms from the
+slap prompt appearing on their screen to their tap), reported by the client
+and trusted as-is - not by server arrival order. Server arrival order would
+conflate real reaction time with each player's network latency, which isn't
+what a reflex game is supposed to measure. The tradeoff is that this trusts
+a client-reported number, so a modified client could in principle report a
+fake low value - accepted here since this is a casual game among friends.
 """
 
 import math
@@ -31,14 +33,13 @@ def _resolve_order_and_penalties(seat_order, winner_uid, slaps, penalty_mode):
     return order, penalized
 
 
-def _apply_resolution(transaction, room_ref, room, slaps, sequence_counter):
+def _apply_resolution(transaction, room_ref, room, slaps):
     order, penalized = _resolve_order_and_penalties(
         room["seatOrder"], room["round"]["slap"]["winnerUid"], slaps, room["round"]["slap"]["pressureMode"]
     )
     transaction.update(room_ref, {
         "status": "round_end",
         "round.slap.slaps": slaps,
-        "round.slap.sequenceCounter": sequence_counter,
         "round.slap.order": order,
         "round.slap.penalizedUids": penalized,
         "round.slap.resolvedAt": firestore.SERVER_TIMESTAMP,
@@ -55,15 +56,19 @@ def slap(req: https_fn.CallableRequest):
     room_code = (req.data or {}).get("room_code", "").strip().upper()
     if not room_code:
         raise https_fn.HttpsError(ERR.INVALID_ARGUMENT, "room_code is required.")
+    try:
+        reaction_ms = int((req.data or {}).get("reaction_ms"))
+    except (TypeError, ValueError):
+        raise https_fn.HttpsError(ERR.INVALID_ARGUMENT, "reaction_ms is required.")
 
     firestore_db = db()
     room_ref = firestore_db.collection("rooms").document(room_code)
     transaction = firestore_db.transaction()
-    return _slap_txn(transaction, room_ref, uid)
+    return _slap_txn(transaction, room_ref, uid, reaction_ms)
 
 
 @firestore.transactional
-def _slap_txn(transaction, room_ref, uid):
+def _slap_txn(transaction, room_ref, uid, reaction_ms):
     room_snap = get_room_or_raise(room_ref.get(transaction=transaction))
     room = room_snap.to_dict()
 
@@ -73,28 +78,23 @@ def _slap_txn(transaction, room_ref, uid):
     slap_state = room["round"]["slap"]
     if uid == slap_state["winnerUid"]:
         # The round's winner is always exempt from the slap race.
-        return {"seq": 0, "resolved": False}
+        return {"reactionMs": 0, "resolved": False}
 
     slaps = dict(slap_state["slaps"] or {})
     if uid in slaps:
         raise https_fn.HttpsError(ERR.FAILED_PRECONDITION, "You already slapped.")
 
-    seat_order = room["seatOrder"]
-    new_seq = slap_state["sequenceCounter"] + 1
-    slaps[uid] = new_seq
+    slaps[uid] = reaction_ms
 
-    non_winner_count = len(seat_order) - 1
-    resolved = new_seq >= non_winner_count
+    non_winner_count = len(room["seatOrder"]) - 1
+    resolved = len(slaps) >= non_winner_count
 
     if resolved:
-        _apply_resolution(transaction, room_ref, room, slaps, new_seq)
+        _apply_resolution(transaction, room_ref, room, slaps)
     else:
-        transaction.update(room_ref, {
-            "round.slap.slaps": slaps,
-            "round.slap.sequenceCounter": new_seq,
-        })
+        transaction.update(room_ref, {"round.slap.slaps": slaps})
 
-    return {"seq": new_seq, "resolved": resolved}
+    return {"reactionMs": reaction_ms, "resolved": resolved}
 
 
 @firestore.transactional
@@ -105,7 +105,7 @@ def _resolve_round_txn(transaction, room_ref):
         return  # Already resolved (e.g. the last slap beat us to it).
 
     slap_state = room["round"]["slap"]
-    _apply_resolution(transaction, room_ref, room, dict(slap_state["slaps"] or {}), slap_state["sequenceCounter"])
+    _apply_resolution(transaction, room_ref, room, dict(slap_state["slaps"] or {}))
 
 
 def resolve_round(req: https_fn.CallableRequest):

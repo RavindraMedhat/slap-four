@@ -23,6 +23,15 @@ def render(ctx):
     already_slapped = uid in (slap_state.get("slaps") or {})
     is_host = room["hostUid"] == uid
 
+    # The moment THIS browser tab first rendered the slap prompt for the
+    # current round - reaction time is measured from here, not the server's
+    # startedAt (which would still bake in this client's own network/render
+    # latency to receive the "now slapping" update).
+    round_key = f"{ctx['room_code']}:{room['currentRoundNumber']}"
+    if st.session_state.get("slap_prompt_round") != round_key:
+        st.session_state["slap_prompt_round"] = round_key
+        st.session_state["slap_prompt_shown_at"] = datetime.now(timezone.utc)
+
     st.subheader(f"{winner['displayName'] if winner else 'Someone'} got four {slap_state['winningRank']}s!")
     st.markdown(revealed_hand_html(slap_state.get("keptCards"), slap_state.get("discardedCard")), unsafe_allow_html=True)
 
@@ -38,7 +47,9 @@ def render(ctx):
             key="slap_btn",
             use_container_width=True,
         ):
-            ctx["call"](slap_logic.slap, ctx["room_code"])
+            shown_at = st.session_state["slap_prompt_shown_at"]
+            reaction_ms = int((datetime.now(timezone.utc) - shown_at).total_seconds() * 1000)
+            ctx["call"](slap_logic.slap, ctx["room_code"], reaction_ms)
 
     slaps = slap_state.get("slaps") or {}
     if slaps:
