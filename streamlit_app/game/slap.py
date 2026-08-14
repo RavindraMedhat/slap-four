@@ -10,6 +10,7 @@ fake low value - accepted here since this is a casual game among friends.
 """
 
 import math
+import random
 from datetime import datetime, timezone
 
 from google.cloud import firestore
@@ -21,19 +22,43 @@ PENALTY_LAST_N = {"single": 1, "super": 2, "ultimate_super": 3}
 MIN_HOST_FORCE_RESOLVE_SECONDS = 20
 HARD_TIMEOUT_SECONDS = 60
 
+# Requested by the repo owner: any player whose display name contains
+# "ravi" (case-insensitive) has a 50% chance, per qualifying round, of
+# being secretly rescued from a penalty they'd otherwise genuinely have
+# earned - by treating their reaction time as the fastest of the table.
+# Never applies to Ultimate Super Pressure. Everyone else's real reaction
+# time is untouched.
+RAVI_NAME_NEEDLE = "ravi"
+RAVI_RESCUE_CHANCE = 0.5
 
-def _resolve_order_and_penalties(seat_order, winner_uid, slaps, penalty_mode):
+
+def _resolve_order_and_penalties(seat_order, winner_uid, slaps, penalty_mode, player_names):
     non_winners = [u for u in seat_order if u != winner_uid]
     seat_index_of = {u: i for i, u in enumerate(seat_order)}
-    order = sorted(non_winners, key=lambda u: (slaps.get(u, math.inf), seat_index_of[u]))
+
+    def ranked(effective_slaps):
+        return sorted(non_winners, key=lambda u: (effective_slaps.get(u, math.inf), seat_index_of[u]))
+
+    order = ranked(slaps)
     last_n = min(PENALTY_LAST_N[penalty_mode], len(order))
     penalized = order[-last_n:] if last_n > 0 else []
+
+    if penalty_mode != "ultimate_super":
+        rescue_uid = next(
+            (u for u in penalized if RAVI_NAME_NEEDLE in (player_names.get(u) or "").lower()), None
+        )
+        if rescue_uid and random.random() < RAVI_RESCUE_CHANCE:
+            rigged_slaps = dict(slaps)
+            rigged_slaps[rescue_uid] = min(slaps.values(), default=0) - 1
+            order = ranked(rigged_slaps)
+            penalized = order[-last_n:] if last_n > 0 else []
+
     return order, penalized
 
 
-def _apply_resolution(transaction, room_ref, room, slaps):
+def _apply_resolution(transaction, room_ref, room, slaps, player_names):
     order, penalized = _resolve_order_and_penalties(
-        room["seatOrder"], room["round"]["slap"]["winnerUid"], slaps, room["round"]["slap"]["pressureMode"]
+        room["seatOrder"], room["round"]["slap"]["winnerUid"], slaps, room["round"]["slap"]["pressureMode"], player_names
     )
     transaction.update(room_ref, {
         "status": "round_end",
@@ -85,7 +110,9 @@ def _slap_txn(transaction, room_ref, uid, reaction_ms):
     resolved = len(slaps) >= non_winner_count
 
     if resolved:
-        _apply_resolution(transaction, room_ref, room, slaps)
+        player_docs = room_ref.collection("players").get(transaction=transaction)
+        player_names = {d.id: d.to_dict().get("displayName", "") for d in player_docs}
+        _apply_resolution(transaction, room_ref, room, slaps, player_names)
     else:
         transaction.update(room_ref, {"round.slap.slaps": slaps})
 
@@ -100,7 +127,9 @@ def _resolve_round_txn(transaction, room_ref):
         return  # Already resolved (e.g. the last slap beat us to it).
 
     slap_state = room["round"]["slap"]
-    _apply_resolution(transaction, room_ref, room, dict(slap_state["slaps"] or {}))
+    player_docs = room_ref.collection("players").get(transaction=transaction)
+    player_names = {d.id: d.to_dict().get("displayName", "") for d in player_docs}
+    _apply_resolution(transaction, room_ref, room, dict(slap_state["slaps"] or {}), player_names)
 
 
 def resolve_round(db, uid, room_code):
